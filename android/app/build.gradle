@@ -76,7 +76,7 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
-
+    
     namespace "com.myapp"
     defaultConfig {
         applicationId "com.myapp"
@@ -84,6 +84,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+    
+  
     }
     signingConfigs {
         debug {
@@ -109,6 +111,8 @@ android {
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
+    apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
     implementation("com.facebook.react:react-android")
 
     if (hermesEnabled.toBoolean()) {
@@ -117,3 +121,6 @@ dependencies {
         implementation jscFlavor
     }
 }
+project.ext.vectoricons = [
+    iconFontNames: [ 'MaterialIcons.ttf', 'Ionicons.ttf' ] // Add your desired fonts here
+]
