@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, ScrollView, Platform, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Image } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import auth from '@react-native-firebase/auth';
+
 
 type Props = {
   navigation: any;
@@ -13,24 +26,42 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [number, setNumber] = useState('');
   const [securePassword, setSecurePassword] = useState(true);
+  const [loading, setLoading] = useState(false); // Add loading state
 
-  const handleSignUp = () => {
+  const handleSignUp = async () => {
     if (!name || !email || !password || !number) {
-      alert('Please fill in all fields');
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
+
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email)) {
-      alert('Please enter a valid email address');
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
+
     if (password.length < 6) {
-      alert('Password must be at least 6 characters');
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
-    console.log('Signing up with:', name, email, password, number);
-    alert('Signup Successful');
-    navigation.navigate('Login');
+
+    setLoading(true); // Start loading
+
+    try {
+      await auth().createUserWithEmailAndPassword(email, password);
+      Alert.alert('Success', 'Signup Successful');
+      setLoading(false); // Stop loading
+      navigation.navigate('Login');
+    } catch (error: any) {
+      setLoading(false); // Stop loading on error
+      if (error.code === 'auth/email-already-in-use') {
+        Alert.alert('Error', 'That email address is already in use!');
+      } else if (error.code === 'auth/invalid-email') {
+        Alert.alert('Error', 'That email address is invalid!');
+      } else {
+        Alert.alert('Error', error.message);
+      }
+    }
   };
 
   return (
@@ -40,7 +71,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.container}
       >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Image
+          <Image
             source={require('./assets/images/logo.png')}
             style={styles.image}
           />
@@ -76,7 +107,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             <TextInput
               style={styles.input}
               placeholder="Password"
-              placeholderTextColor="indigo" 
+              placeholderTextColor="indigo"
               value={password}
               onChangeText={setPassword}
               secureTextEntry={securePassword}
@@ -93,9 +124,13 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-            <Text style={styles.buttonText}>Sign Up</Text>
-          </TouchableOpacity>
+          {loading ? ( // Show loader if loading
+            <ActivityIndicator size="large" color="#8134AF" />
+          ) : (
+            <TouchableOpacity style={styles.button} onPress={handleSignUp}>
+              <Text style={styles.buttonText}>Sign Up</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity onPress={() => navigation.navigate('Login')}>
             <Text style={styles.link}>Already have an account? Login</Text>

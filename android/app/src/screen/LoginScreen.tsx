@@ -1,27 +1,77 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import { Image } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import auth from '@react-native-firebase/auth';
 
 type Props = {
   navigation: any;
 };
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [securePassword, setSecurePassword] = useState(true);
-  const handleLogin = () => {
-    if (name && password) {
-      setLoading(true); // Show loading spinner
-      console.log('Logging in with:', name, password);
-      setTimeout(() => { // Simulate network request
-        setLoading(false);
-        navigation.navigate('Main', { userName: name });
-      }, 2000); // Adjust timeout as needed
-    } else {
-      alert('Please enter both username and password');
+
+  const handleLogin = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!email || !password) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Firebase login with email and password
+      await auth().signInWithEmailAndPassword(email.trim(), password);
+      Alert.alert('Success', 'Login Successful');
+      
+    } catch (error: any) {
+      setLoading(false);
+
+      // Enhanced error handling with improved checks
+      switch (error.code) {
+        case 'auth/user-not-found':
+          Alert.alert(
+            'User Not Found',
+            'No user found with this email address. Please sign up first.',
+          );
+          break;
+        case 'auth/wrong-password':
+          Alert.alert('Incorrect Password', 'The password you entered is incorrect.');
+          break;
+        case 'auth/invalid-email':
+          Alert.alert('Invalid Email', 'The email address entered is not valid.');
+          break;
+        case 'auth/too-many-requests':
+          Alert.alert(
+            'Account Locked',
+            'Too many failed login attempts. Please try again later.',
+          );
+          break;
+        default:
+          Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -33,7 +83,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.container}
       >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Image
+          <Image
             source={require('./assets/images/logo.png')}
             style={styles.image}
           />
@@ -41,44 +91,52 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 
           <TextInput
             style={styles.input}
-            placeholder="Username"
+            placeholder="Email"
             placeholderTextColor="indigo"
-            value={name}
-            onChangeText={setName}
+            value={email}
+            onChangeText={setEmail}
             keyboardType="email-address"
           />
 
           <View style={styles.passwordContainer}>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Password"
-                        placeholderTextColor="indigo" 
-                        value={password}
-                        onChangeText={setPassword}
-                        secureTextEntry={securePassword}
-                      />
-                      <TouchableOpacity
-                        style={styles.eyeIcon}
-                        onPress={() => setSecurePassword(!securePassword)}
-                      >
-                        <MaterialIcons
-                          name={securePassword ? 'visibility-off' : 'visibility'}
-                          size={24}
-                          color="indigo"
-                        />
-                      </TouchableOpacity>
-                    </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="indigo"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={securePassword}
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setSecurePassword(!securePassword)}
+            >
+              <MaterialIcons
+                name={securePassword ? 'visibility-off' : 'visibility'}
+                size={24}
+                color="indigo"
+              />
+            </TouchableOpacity>
+          </View>
 
           {loading ? (
             <ActivityIndicator size="large" color="#8134AF" />
           ) : (
-            <TouchableOpacity style={styles.button} onPress={handleLogin}>
+            <TouchableOpacity
+              style={[styles.button, loading && { backgroundColor: '#ddd' }]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
               <Text style={styles.buttonText}>Login</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
             <Text style={styles.link}>Don't have an account? Sign Up</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+            <Text style={styles.link}>Forgot Password?</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -129,11 +187,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   image: {
-    width: 200,
-    height: 200,
+    width: '70%',
+    height: undefined,
+    aspectRatio: 1,
     resizeMode: 'contain',
     alignSelf: 'center',
-    marginTop: 0, // Better for responsive design
   },
   passwordContainer: {
     position: 'relative',
@@ -144,7 +202,7 @@ const styles = StyleSheet.create({
     top: 12,
   },
   link: {
-    marginTop: 60,
+    marginTop: 20,
     color: 'indigo',
     textAlign: 'center',
   },

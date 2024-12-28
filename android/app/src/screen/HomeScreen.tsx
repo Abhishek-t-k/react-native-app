@@ -16,7 +16,7 @@ const HomeScreen = ({ navigation }: Props) => {
   ];
 
   const handleNavigate = (screen: string) => {
-    navigation.navigate(screen); // Navigate to different screens
+    navigation.navigate('Notification'); // Navigate to different screens
   };
 
   return (
@@ -50,6 +50,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 0,
+    marginTop: 80,
     
   },
   greeting: {

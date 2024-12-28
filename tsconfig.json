@@ -9,3 +9,5 @@
     "jsx": "react"
   }
 }
+"esModuleInterop": true,  // Add this line
+    "skipLibCheck": true,  

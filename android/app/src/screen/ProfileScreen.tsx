@@ -1,46 +1,53 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import auth from '@react-native-firebase/auth';
 
 type Props = {
   navigation: any;
 };
 
-const ProfileScreen: React.FC = ({ navigation }) => {
+const ProfileScreen: React.FC<Props> = ({ navigation }) => {
   // State to hold profile data
   const [profile, setProfile] = useState({
-    name: 'John Doe',
-    phone: '+1234567890',
-    email: 'johndoe@gmail.com',
+    name: '',
+    phone: '',
+    email: '',
     password: '********',
   });
 
-  // State to track whether we are editing
-  const [isEditing, setIsEditing] = useState(false);
-
-  // Local state for editing profile fields
-  const [editName, setEditName] = useState(profile.name);
-  const [editPhone, setEditPhone] = useState(profile.phone);
-  const [editEmail, setEditEmail] = useState(profile.email);
-  const [editPassword, setEditPassword] = useState('');
-
-  // Save changes to profile
-  const handleSave = () => {
-    setProfile({
-      name: editName,
-      phone: editPhone,
-      email: editEmail,
-      password: editPassword ? '********' : profile.password, // Mask password
-    });
-    setIsEditing(false); // Exit edit mode
-  };
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (user) {
+      setProfile({
+        name: user.displayName || 'John', // If display name is not set, fallback to 'John Doe'
+        email: user.email || '',
+        phone: user.phoneNumber || '1234567890',
+        password:'********', // Hide the password (you can implement password reset if needed)
+      });
+    } else {
+      navigation.navigate('Login');
+    }
+  }, [navigation]);
 
   // Log Out functionality
   const handleLogout = () => {
-    Alert.alert('Log Out', 'You have been logged out successfully!', [
-      { text: 'OK', onPress: () => console.log('Logged Out') },
-    ]);
-    navigation.navigate('Login'); // Add navigation to Login screen
+    auth()
+      .signOut()
+      .then(() => {
+        Alert.alert('Success', 'You have been logged out.');
+        
+      })
+      .catch((error) => {
+        console.log('error:', error);
+        Alert.alert('Error', 'Unable to logout. Please try again.');
+      });
+  };
+
+  // Update profile data after edit
+  const handleProfileUpdate = (updatedProfile: any) => {
+    setProfile(updatedProfile);
   };
 
   return (
@@ -48,101 +55,60 @@ const ProfileScreen: React.FC = ({ navigation }) => {
       <Text style={styles.title}>My Profile</Text>
 
       {/* View Mode */}
-      {!isEditing ? (
-        <View>
-          <View style={styles.profileContainer}>
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldTitle}>Name:</Text>
-              <Text style={styles.fieldValue}>{profile.name}</Text>
-            </View>
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldTitle}>Phone:</Text>
-              <Text style={styles.fieldValue}>{profile.phone}</Text>
-            </View>
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldTitle}>Email:</Text>
-              <Text style={styles.fieldValue}>{profile.email}</Text>
-            </View>
-            <View style={styles.fieldContainer}>
-              <Text style={styles.fieldTitle}>Password:</Text>
-              <Text style={styles.fieldValue}>{profile.password}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.button} onPress={() => setIsEditing(true)}>
-            <Text style={styles.buttonText}>Edit Profile</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.button, { backgroundColor: '#DD2A7B', marginTop: 20 }]} onPress={handleLogout}>
-            <Text style={styles.buttonText}>Log Out</Text>
-          </TouchableOpacity>
-
-          {/* Additional Options */}
-          <View style={styles.optionContainer}>
-            <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Settings')}>
-              <MaterialIcons name="settings" size={24} color="#8134AF" />
-              <Text style={styles.optionText}>Settings</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Help')}>
-              <MaterialIcons name="help-outline" size={24} color="#8134AF" />
-              <Text style={styles.optionText}>Help</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Privacy')}>
-              <MaterialIcons name="lock" size={24} color="#8134AF" />
-              <Text style={styles.optionText}>Privacy</Text>
-            </TouchableOpacity>
-          </View>
+      <View style={styles.profileContainer}>
+        <View style={styles.fieldContainer}>
+          <Text style={styles.fieldTitle}>Name:</Text>
+          <Text style={styles.fieldValue}>{profile.name}</Text>
         </View>
-      ) : (
-        // Edit Mode
-        <View>
-          <TextInput
-            style={styles.input}
-            placeholder="Name"
-            placeholderTextColor="indigo"
-            value={editName}
-            onChangeText={setEditName}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Phone"
-            placeholderTextColor="indigo"
-            value={editPhone}
-            onChangeText={setEditPhone}
-            keyboardType="phone-pad"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="indigo"
-            value={editEmail}
-            onChangeText={setEditEmail}
-            keyboardType="email-address"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="indigo"
-            value={editPassword}
-            onChangeText={setEditPassword}
-            secureTextEntry
-          />
-
-          <TouchableOpacity style={[styles.button, { backgroundColor: '#8134AF' }]} onPress={handleSave}>
-            <Text style={styles.buttonText}>Save</Text>
-          </TouchableOpacity>
-          <View style={{ marginBottom: 10 }} />
-          <TouchableOpacity style={[styles.button, { backgroundColor: '#DD2A7B' }]} onPress={() => setIsEditing(false)}>
-            <Text style={styles.buttonText}>Cancel</Text>
-          </TouchableOpacity>
+        <View style={styles.fieldContainer}>
+          <Text style={styles.fieldTitle}>Phone:</Text>
+          <Text style={styles.fieldValue}>{profile.phone}</Text>
         </View>
-      )}
+        <View style={styles.fieldContainer}>
+          <Text style={styles.fieldTitle}>Email:</Text>
+          <Text style={styles.fieldValue}>{profile.email}</Text>
+        </View>
+        <View style={styles.fieldContainer}>
+          <Text style={styles.fieldTitle}>Password:</Text>
+          <Text style={styles.fieldValue}>{profile.password}</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate('Edit', { profile, updateProfile: handleProfileUpdate })}
+      >
+        <Text style={styles.buttonText}>Edit Profile</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: '#DD2A7B', marginTop: 20 }]}
+        onPress={handleLogout}
+      >
+        <Text style={styles.buttonText}>Log Out</Text>
+      </TouchableOpacity>
+
+      {/* Additional Options */}
+      <View style={styles.optionContainer}>
+        <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Settings')}>
+          <MaterialIcons name="settings" size={24} color="#8134AF" />
+          <Text style={styles.optionText}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Help')}>
+          <MaterialIcons name="help-outline" size={24} color="#8134AF" />
+          <Text style={styles.optionText}>Help</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Privacy')}>
+          <MaterialIcons name="lock" size={24} color="#8134AF" />
+          <Text style={styles.optionText}>Privacy</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20,  },
+  container: { flexGrow: 1, padding: 20 },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -172,16 +138,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: '#555',
   },
-  input: {
-    height: 45,
-    borderColor: '#b388f4',
-    borderWidth: 1,
-    marginBottom: 15,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    color: '#333',
-    backgroundColor: '#f5f5f5',
-  },
   button: {
     backgroundColor: '#8134AF',
     paddingVertical: 12,
@@ -198,7 +154,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   optionContainer: {
-    marginTop: 30, // Increased margin to separate the options
+    marginTop: 30,
     marginBottom: 20,
     alignItems: 'center',
   },
@@ -222,3 +178,4 @@ const styles = StyleSheet.create({
 });
 
 export default ProfileScreen;
+
