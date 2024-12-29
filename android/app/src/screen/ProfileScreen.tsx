@@ -1,37 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 
-type Props = {
-  navigation: any;
-};
-
-const ProfileScreen: React.FC<Props> = ({ navigation }) => {
-  // State to hold profile data
+const ProfileScreen = ({ navigation }) => {
   const [profile, setProfile] = useState({
     name: '',
     phone: '',
     email: '',
-    password: '********',
+    password: '',
   });
 
   useEffect(() => {
-    const user = auth().currentUser;
-    if (user) {
-      setProfile({
-        name: user.displayName || 'John', // If display name is not set, fallback to 'John Doe'
-        email: user.email || '',
-        phone: user.phoneNumber || '1234567890',
-        password:'********', // Hide the password (you can implement password reset if needed)
-      });
-    } else {
-      navigation.navigate('Login');
-    }
+    const fetchProfile = async () => {
+      const user = auth().currentUser;
+
+      if (user) {
+        try {
+          const userDoc = await firestore().collection('users').doc(user.uid).get();
+          if (userDoc.exists) {
+            const userData = userDoc.data();
+            setProfile({
+              name: userData.name || 'John',
+              phone: userData.phone || '1234567890',
+              email: userData.email || '',
+              password:  '********', // Mask password for display
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+          Alert.alert('Error', 'Unable to load profile data.');
+        }
+      } else {
+        navigation.navigate('Login');
+      }
+    };
+
+    fetchProfile();
   }, [navigation]);
 
-  // Log Out functionality
   const handleLogout = () => {
     auth()
       .signOut()
@@ -40,21 +48,15 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         
       })
       .catch((error) => {
-        console.log('error:', error);
+        console.error('Logout error:', error);
         Alert.alert('Error', 'Unable to logout. Please try again.');
       });
-  };
-
-  // Update profile data after edit
-  const handleProfileUpdate = (updatedProfile: any) => {
-    setProfile(updatedProfile);
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>My Profile</Text>
 
-      {/* View Mode */}
       <View style={styles.profileContainer}>
         <View style={styles.fieldContainer}>
           <Text style={styles.fieldTitle}>Name:</Text>
@@ -76,7 +78,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 
       <TouchableOpacity
         style={styles.button}
-        onPress={() => navigation.navigate('Edit', { profile, updateProfile: handleProfileUpdate })}
+        onPress={() => navigation.navigate('Edit', { profile, updateProfile: setProfile })}
       >
         <Text style={styles.buttonText}>Edit Profile</Text>
       </TouchableOpacity>
@@ -88,7 +90,6 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
         <Text style={styles.buttonText}>Log Out</Text>
       </TouchableOpacity>
 
-      {/* Additional Options */}
       <View style={styles.optionContainer}>
         <TouchableOpacity style={styles.optionButton} onPress={() => navigation.navigate('Settings')}>
           <MaterialIcons name="settings" size={24} color="#8134AF" />
@@ -108,7 +109,10 @@ const ProfileScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20 },
+  container: {
+    flexGrow: 1,
+    padding: 20,
+  },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
@@ -116,7 +120,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#8134AF',
   },
-  profileContainer: { marginBottom: 20 },
+  profileContainer: {
+    marginBottom: 20,
+  },
   fieldContainer: {
     backgroundColor: '#f5f5f5',
     padding: 15,
@@ -178,4 +184,6 @@ const styles = StyleSheet.create({
 });
 
 export default ProfileScreen;
+
+
 

@@ -14,7 +14,7 @@ import {
 import { Image } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
-
+import firestore from '@react-native-firebase/firestore';
 
 type Props = {
   navigation: any;
@@ -26,7 +26,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [number, setNumber] = useState('');
   const [securePassword, setSecurePassword] = useState(true);
-  const [loading, setLoading] = useState(false); // Add loading state
+  const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
     if (!name || !email || !password || !number) {
@@ -45,15 +45,24 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    setLoading(true); // Start loading
+    setLoading(true);
 
     try {
-      await auth().createUserWithEmailAndPassword(email, password);
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      const user = userCredential.user;
+
+      // Save additional details in Firestore
+      await firestore().collection('users').doc(user.uid).set({
+        name,
+        phone: number,
+        email,password,
+      });
+
       Alert.alert('Success', 'Signup Successful');
-      setLoading(false); // Stop loading
+      setLoading(false);
       navigation.navigate('Login');
     } catch (error: any) {
-      setLoading(false); // Stop loading on error
+      setLoading(false);
       if (error.code === 'auth/email-already-in-use') {
         Alert.alert('Error', 'That email address is already in use!');
       } else if (error.code === 'auth/invalid-email') {
@@ -124,7 +133,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          {loading ? ( // Show loader if loading
+          {loading ? (
             <ActivityIndicator size="large" color="#8134AF" />
           ) : (
             <TouchableOpacity style={styles.button} onPress={handleSignUp}>
@@ -189,7 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     marginBottom: 15,
     paddingHorizontal: 10,
-    paddingRight: 40, // Add padding for the eye icon
+    paddingRight: 40,
   },
   passwordContainer: {
     position: 'relative',
@@ -207,3 +216,4 @@ const styles = StyleSheet.create({
 });
 
 export default SignUpScreen;
+
