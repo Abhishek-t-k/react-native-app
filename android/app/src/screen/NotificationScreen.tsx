@@ -1,91 +1,89 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+import messaging from '@react-native-firebase/messaging';
 
-type RootStackParamList = {
-  Notification: { notification: string };
-};
+const NotificationsScreen = () => {
+  const [requests, setRequests] = useState([]);
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Notification'>;
+  useEffect(() => {
+    const fetchRequests = async () => {
+      const currentUser = auth().currentUser;
+      const querySnapshot = await firestore()
+        .collection('requests')
+        .where('receiverId', '==', currentUser.uid)
+        .get();
 
-const NotificationReadPage = ({ route }: Props) => {
-  const { notification  } = route.params || {};
+      const data = await Promise.all(
+        querySnapshot.docs.map(async (doc) => {
+          const requestData = doc.data();
+          const senderDoc = await firestore().collection('users').doc(requestData.senderId).get();
+          const senderName = senderDoc.data()?.name || 'Unknown';
+          const timestamp = requestData.timestamp?.toDate().toLocaleString() || 'Unknown time';
+          return { id: doc.id, ...requestData, senderName, timestamp };
+        })
+      );
+      setRequests(data);
+    };
 
-  const handleShowLocation = () => {
-    Alert.alert('Location', 'Showing location...');
+    fetchRequests();
+  }, []);
+
+  const handleAcceptRequest = async (id, senderId, senderName) => {
+    await firestore().collection('requests').doc(id).update({ status: 'accepted' });
+    sendNotification(senderId, senderName);
+    Alert.alert('Success', 'Request accepted!');
   };
 
-  const handlePlayLiveAudio = () => {
-    Alert.alert('Audio', 'Playing live audio...');
-  };
+  const sendNotification = async (senderId, senderName) => {
+    const senderDoc = await firestore().collection('users').doc(senderId).get();
+    const deviceToken = senderDoc.data()?.deviceToken;
 
-  const handleViewUserDetails = () => {
-    Alert.alert('User Details', 'Displaying user details...');
+    if (deviceToken) {
+      try {
+        await messaging().sendToDevice(deviceToken, {
+          notification: {
+            title: 'Request Accepted',
+            body: `${senderName} has accepted your request.`,
+          },
+        });
+      } catch (error) {
+        console.error('Error sending notification:', error);
+      }
+    }
   };
 
   return (
     <View style={styles.container}>
-      <View >
-        <Text style={styles.title}>Notification</Text>
-       
-      </View>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={handleShowLocation}>
-          <Text style={styles.buttonText}>Show Location</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handlePlayLiveAudio}>
-          <Text style={styles.buttonText}>Play Live Audio</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handleViewUserDetails}>
-          <Text style={styles.buttonText}>View User Details</Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={styles.title}>Notifications</Text>
+      <FlatList
+        data={requests}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <View style={styles.item}>
+            <Text>Request from {item.senderName}</Text>
+            <Text>Received at: {item.timestamp}</Text>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => handleAcceptRequest(item.id, item.senderId, item.senderName)}
+            >
+              <Text style={styles.buttonText}>Accept</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#8134AF',
-    marginBottom: 100,
-    marginTop: -100,
-    textAlign: 'center',
-  },
-  notificationText: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  buttonContainer: {
-    width: '90%',
-  },
-  button: {
-    backgroundColor: '#8134AF',
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
-  },
+  container: { flex: 1, padding: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 ,color: 'indigo'},
+  item: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 15 },
+  button: { backgroundColor: '#8134AF', padding: 10, borderRadius: 5, marginTop: 10 },
+  buttonText: { color: 'white', textAlign: 'center' },
 });
 
-export default NotificationReadPage;
+export default NotificationsScreen;
+

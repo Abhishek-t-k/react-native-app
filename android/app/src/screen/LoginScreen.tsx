@@ -10,8 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
-import { Image } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import auth from '@react-native-firebase/auth';
 
@@ -23,7 +23,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [securePassword, setSecurePassword] = useState(true);
+  const [securePassword, setSecurePassword] = useState(true); // Controls password visibility
 
   const handleLogin = async () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -42,8 +42,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     try {
       // Firebase login with email and password
       await auth().signInWithEmailAndPassword(email.trim(), password);
-      Alert.alert('Success', 'Login Successful');
-      
+      // Navigate after successful login
+      // navigation.navigate('Home'); // Uncomment and replace with actual screen
     } catch (error: any) {
       setLoading(false);
 
@@ -52,7 +52,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         case 'auth/user-not-found':
           Alert.alert(
             'User Not Found',
-            'No user found with this email address. Please sign up first.',
+            'No user found with this email address. Please sign up first.'
           );
           break;
         case 'auth/wrong-password':
@@ -64,7 +64,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
         case 'auth/too-many-requests':
           Alert.alert(
             'Account Locked',
-            'Too many failed login attempts. Please try again later.',
+            'Too many failed login attempts. Please try again later.'
           );
           break;
         default:
@@ -105,11 +105,11 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               placeholderTextColor="indigo"
               value={password}
               onChangeText={setPassword}
-              secureTextEntry={securePassword}
+              secureTextEntry={securePassword} // Toggles password visibility to black dots or text
             />
             <TouchableOpacity
               style={styles.eyeIcon}
-              onPress={() => setSecurePassword(!securePassword)}
+              onPress={() => setSecurePassword(!securePassword)} // Toggle the password visibility
             >
               <MaterialIcons
                 name={securePassword ? 'visibility-off' : 'visibility'}
@@ -185,6 +185,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     marginBottom: 15,
     paddingHorizontal: 10,
+    color: 'indigo'
   },
   image: {
     width: '70%',

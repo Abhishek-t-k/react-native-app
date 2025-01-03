@@ -4,6 +4,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import auth from '@react-native-firebase/auth';
+import messaging from '@react-native-firebase/messaging';
+import firestore from '@react-native-firebase/firestore';
 
 // Import screens
 import HomeScreen from './android/app/src/screen/HomeScreen';
@@ -16,9 +18,10 @@ import SignUpScreen from './android/app/src/screen/SignUpScreen';
 import SettingsScreen from './android/app/src/screen/SettingsScreen';
 import HelpScreen from './android/app/src/screen/HelpScreen';
 import PrivacyPage from './android/app/src/screen/PrivacyScreen';
-import NotificationReadPage from './android/app/src/screen/NotificationScreen';
+import NotificationReadPage from './android/app/src/screen/AlertScreen';
 import EditProfile from './android/app/src/screen/EditProfile';
 import ForgotPasswordScreen from './android/app/src/screen/ForgotPasswordScreen';
+import NotificationsScreen from './android/app/src/screen/NotificationScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -37,8 +40,9 @@ const ProfileStackNavigator = () => (
 // Home Stack Navigator
 const HomeStackNavigator = () => (
   <Stack.Navigator>
-    <Stack.Screen name="Homee" component={HomeScreen} options={{ headerShown: false }} />
-    <Stack.Screen name="Notification" component={NotificationReadPage} options={{ headerShown: false }} />
+    <Stack.Screen name="Home" component={HomeScreen} />
+    <Stack.Screen name="Alert" component={NotificationReadPage} options={{ headerShown: false }} />
+    <Stack.Screen name="Notification" component={NotificationsScreen} options={{ headerShown: false }} />
   </Stack.Navigator>
 );
 
@@ -75,7 +79,7 @@ const MainTabNavigator = () => (
 const AuthStackNavigator = () => (
   <Stack.Navigator initialRouteName="Login">
     <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-    <Stack.Screen name='ForgotPassword' component={ForgotPasswordScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{ headerShown: false }} />
     <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
   </Stack.Navigator>
 );
@@ -85,27 +89,39 @@ const App = () => {
   const [initializing, setInitializing] = useState(true); // Track app initialization
 
   useEffect(() => {
-    // Listen for Firebase authentication state changes
     const unsubscribe = auth().onAuthStateChanged((currentUser) => {
       setUser(currentUser);
       if (initializing) setInitializing(false);
+
+      if (currentUser) {
+        // Save device token when user logs in
+        saveDeviceToken(currentUser.uid);
+      }
     });
 
-    return unsubscribe; // Cleanup listener on unmount
+    return unsubscribe;
   }, [initializing]);
 
+  const saveDeviceToken = async (uid) => {
+    // Get the device token
+    const token = await messaging().getToken();
+
+    // Save the device token to Firestore
+    await firestore().collection('users').doc(uid).set(
+      { deviceToken: token },
+      { merge: true }
+    );
+  };
+
   if (initializing) {
-    // Optional: Show a loading indicator while checking auth state
     return null;
   }
 
   return (
     <NavigationContainer>
       {user ? (
-        // Main app flow for authenticated users
         <MainTabNavigator />
       ) : (
-        // Authentication flow for unauthenticated users
         <AuthStackNavigator />
       )}
     </NavigationContainer>
@@ -113,3 +129,4 @@ const App = () => {
 };
 
 export default App;
+

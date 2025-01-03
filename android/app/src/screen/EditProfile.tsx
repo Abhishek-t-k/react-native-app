@@ -1,35 +1,95 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 const EditProfile = ({ route, navigation }: any) => {
   const { profile, updateProfile } = route.params;
 
-  const [editName, setEditName] = useState(profile.name);
   const [editPhone, setEditPhone] = useState(profile.phone);
   const [editEmail, setEditEmail] = useState(profile.email);
   const [editPassword, setEditPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
 
-  const handleSave = () => {
-    const updatedProfile = {
-      name: editName,
-      phone: editPhone,
-      email: editEmail,
-      password: editPassword || profile.password,
-    };
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
-    updateProfile(updatedProfile);
-    navigation.goBack(); // Go back to ProfileScreen after saving changes
+  const validatePhone = (phone: string) => {
+    const phoneRegex = /^\d{10}$/; // Adjust for your locale
+    return phoneRegex.test(phone);
+  };
+
+  const handleSave = async () => {
+    const currentUser = auth().currentUser;
+
+    if (!currentUser) {
+      Alert.alert('Error', 'User not authenticated. Please log in again.');
+      navigation.navigate('Login');
+      return;
+    }
+
+    // Validate inputs
+    if (!validateEmail(editEmail)) {
+      Alert.alert('Error', 'Invalid email format.');
+      return;
+    }
+    if (!validatePhone(editPhone)) {
+      Alert.alert('Error', 'Invalid phone number format.');
+      return;
+    }
+    if (editPassword && editPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters long.');
+      return;
+    }
+
+    try {
+      // Reauthenticate the user with the current password
+      const credential = auth.EmailAuthProvider.credential(currentUser.email!, currentPassword);
+      await currentUser.reauthenticateWithCredential(credential);
+
+      // Update email in Firebase Authentication if changed
+      if (editEmail !== profile.email) {
+        await currentUser.updateEmail(editEmail);
+      }
+
+      // If the password field is filled, update the password
+      if (editPassword) {
+        await currentUser.updatePassword(editPassword);
+      }
+
+      // Update phone and email in Firestore
+      await firestore().collection('users').doc(currentUser.uid).update({
+        phone: editPhone,
+        email: editEmail,
+      });
+
+      const updatedProfile = {
+        ...profile,
+        phone: editPhone,
+        email: editEmail,
+        password: editPassword || profile.password,
+      };
+
+      updateProfile(updatedProfile);
+
+      Alert.alert('Success', 'Profile updated successfully!');
+      navigation.goBack();
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      Alert.alert('Error', error.message || 'Failed to update profile.');
+    }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Edit Profile</Text>
+
       <TextInput
-        style={styles.input}
-        placeholder="Name"
-        placeholderTextColor="indigo"
-        value={editName}
-        onChangeText={setEditName}
+        style={[styles.input, { backgroundColor: '#E8E8E8' }]}
+        value={profile.name}
+        editable={false}
       />
       <TextInput
         style={styles.input}
@@ -49,16 +109,29 @@ const EditProfile = ({ route, navigation }: any) => {
       />
       <TextInput
         style={styles.input}
-        placeholder="Password"
+        placeholder="Current Password"
+        placeholderTextColor="indigo"
+        value={currentPassword}
+        onChangeText={setCurrentPassword}
+        secureTextEntry
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="New Password (optional)"
         placeholderTextColor="indigo"
         value={editPassword}
         onChangeText={setEditPassword}
         secureTextEntry
       />
+
       <TouchableOpacity style={[styles.button, { backgroundColor: '#8134AF' }]} onPress={handleSave}>
         <Text style={styles.buttonText}>Save</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.button, { backgroundColor: '#DD2A7B' }]} onPress={() => navigation.goBack()}>
+
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: '#DD2A7B' }]}
+        onPress={() => navigation.goBack()}
+      >
         <Text style={styles.buttonText}>Cancel</Text>
       </TouchableOpacity>
     </View>
@@ -107,4 +180,6 @@ const styles = StyleSheet.create({
 });
 
 export default EditProfile;
+
+
 
