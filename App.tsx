@@ -48,7 +48,7 @@ const HomeStackNavigator = () => (
 
 // Main App Tabs Navigator
 const MainTabNavigator = () => (
-  <Tab.Navigator
+  <Tab.Navigator 
     screenOptions={({ route }) => ({
       tabBarIcon: ({ focused, color, size }) => {
         let iconName;
