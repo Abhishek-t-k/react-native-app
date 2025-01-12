@@ -1,16 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  RefreshControl,
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 
@@ -178,38 +167,12 @@ const EmergencyContactsScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-        }
-      >
-        {/* Add Emergency Contact Section at the Top */}
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}>
         <Text style={styles.title}>Add Emergency Contact</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Contact Name"
-          placeholderTextColor="gray"
-          value={contactName}
-          onChangeText={setContactName}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Contact Phone Number"
-          placeholderTextColor="gray"
-          keyboardType="phone-pad"
-          value={contactPhone}
-          onChangeText={setContactPhone}
-        />
-        <TouchableOpacity
-          style={[styles.button, (!contactName || !contactPhone) ? styles.buttonDisabled : null]}
-          onPress={handleAddContact}
-          disabled={!contactName || !contactPhone}
-        >
+        <TextInput style={styles.input} placeholder="Contact Name" placeholderTextColor="gray" value={contactName} onChangeText={setContactName} />
+        <TextInput style={styles.input} placeholder="Contact Phone Number" placeholderTextColor="gray" keyboardType="phone-pad" value={contactPhone} onChangeText={setContactPhone} />
+        <TouchableOpacity style={[styles.button, (!contactName || !contactPhone) ? styles.buttonDisabled : null]} onPress={handleAddContact} disabled={!contactName || !contactPhone}>
           <Text style={styles.buttonText}>Add Contact</Text>
         </TouchableOpacity>
 
@@ -222,10 +185,7 @@ const EmergencyContactsScreen = () => {
               <Text style={styles.contactText}>
                 <Text style={styles.boldText}>Phone:</Text> {contact.phone}
               </Text>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => handleDeleteContact(contact)}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={() => handleDeleteContact(contact)}>
                 <Text style={styles.cancelButtonText}>Delete</Text>
               </TouchableOpacity>
             </View>
@@ -234,20 +194,9 @@ const EmergencyContactsScreen = () => {
           <Text style={styles.noContactsText}>No emergency contacts added yet.</Text>
         )}
 
-        {/* Send Emergency Request Section */}
         <Text style={styles.title}>Send Emergency Request</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Name of Person"
-          placeholderTextColor="gray"
-          value={name}
-          onChangeText={setName}
-        />
-        <TouchableOpacity
-          style={[styles.button, !name ? styles.buttonDisabled : null]}
-          onPress={handleSendRequest}
-          disabled={!name}
-        >
+        <TextInput style={styles.input} placeholder="Enter Name of Person" placeholderTextColor="gray" value={name} onChangeText={setName} />
+        <TouchableOpacity style={[styles.button, !name ? styles.buttonDisabled : null]} onPress={handleSendRequest} disabled={!name}>
           <Text style={styles.buttonText}>Send Request</Text>
         </TouchableOpacity>
 
@@ -258,17 +207,13 @@ const EmergencyContactsScreen = () => {
                 <Text style={styles.boldText}>Sent to:</Text> {request.recipientName}
               </Text>
               <Text style={styles.requestText}>
-                <Text style={styles.boldText}>Status:</Text> 
-                <Text style={styles.statusText}>{request.status}</Text>
+                <Text style={styles.boldText}>Status:</Text> <Text style={styles.statusText}>{request.status}</Text>
               </Text>
               <Text style={styles.requestText}>
                 <Text style={styles.boldText}>Timestamp:</Text> {request.timestamp}
               </Text>
               {request.status === 'pending' && (
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={() => handleCancelRequest(request.id)}
-                >
+                <TouchableOpacity style={styles.cancelButton} onPress={() => handleCancelRequest(request.id)}>
                   <Text style={styles.cancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
               )}
@@ -281,6 +226,7 @@ const EmergencyContactsScreen = () => {
     </KeyboardAvoidingView>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#f9f9f9' },
