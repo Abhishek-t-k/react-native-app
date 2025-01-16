@@ -1,91 +1,75 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import firestore from '@react-native-firebase/firestore';
 
 type RootStackParamList = {
-  Notification: { notification: string };
+  Alert: { alertId: string };
 };
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Notification'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Alert'>;
 
 const NotificationReadPage = ({ route }: Props) => {
-  const { notification  } = route.params || {};
+  const { alertId } = route.params;
+  const [alertDetails, setAlertDetails] = useState<any>(null);
 
-  const handleShowLocation = () => {
-    Alert.alert('Location', 'Showing location...');
-  };
+  useEffect(() => {
+    const fetchAlertDetails = async () => {
+      const alertDoc = await firestore().collection('alerts').doc(alertId).get();
+      if (alertDoc.exists) {
+        setAlertDetails(alertDoc.data());
+      } else {
+        Alert.alert('Error', 'Alert not found.');
+      }
+    };
 
-  const handlePlayLiveAudio = () => {
-    Alert.alert('Audio', 'Playing live audio...');
-  };
+    fetchAlertDetails();
+  }, [alertId]);
 
-  const handleViewUserDetails = () => {
-    Alert.alert('User Details', 'Displaying user details...');
-  };
+  if (!alertDetails) {
+    return (
+      <View style={styles.container}>
+        <Text>Loading alert details...</Text>
+      </View>
+    );
+  }
+
+  const { senderName, location, message, senderLocation } = alertDetails;
 
   return (
     <View style={styles.container}>
-      <View >
-        <Text style={styles.title}>Alert</Text>
-       
-      </View>
+      <Text style={styles.title}>Alert Details</Text>
+      <Text style={styles.text}>Sender: {senderName}</Text>
+      <Text style={styles.text}>Message: {message}</Text>
+     
+      
+      {/* Display Sender's Location */}
+      {senderLocation ? (
+        <Text style={styles.text}>
+          Sender Location: {senderLocation.latitude}, {senderLocation.longitude}
+        </Text>
+      ) : (
+        <Text style={styles.text}>Sender's location not available.</Text>
+      )}
 
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={handleShowLocation}>
-          <Text style={styles.buttonText}>Show Location</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handlePlayLiveAudio}>
-          <Text style={styles.buttonText}>Play Live Audio</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={handleViewUserDetails}>
-          <Text style={styles.buttonText}>View User Details</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => Alert.alert('Alert acknowledged!')}
+      >
+        <Text style={styles.buttonText}>Acknowledge</Text>
+      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#8134AF',
-    marginBottom: 100,
-    marginTop: -100,
-    textAlign: 'center',
-  },
-  notificationText: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 22,
-    textAlign: 'center',
-  },
-  buttonContainer: {
-    width: '90%',
-  },
-  button: {
-    backgroundColor: '#8134AF',
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
+  text: { fontSize: 16, marginBottom: 10 },
+  button: { backgroundColor: '#8134AF', padding: 15, borderRadius: 10, marginTop: 20 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
 
 export default NotificationReadPage;
+
+
