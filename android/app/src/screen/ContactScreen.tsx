@@ -10,7 +10,8 @@ const EmergencyContactsScreen = () => {
   const [sentRequests, setSentRequests] = useState([]);
   const [emergencyContacts, setEmergencyContacts] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
+  const [filter, setFilter] = useState('all');
+  
   const currentUser = auth().currentUser;
 
   const fetchRequests = async () => {
@@ -166,6 +167,11 @@ const EmergencyContactsScreen = () => {
     }
   };
 
+  // Filter the sent requests based on the selected filter
+  const filteredRequests = sentRequests.filter(request => 
+    filter === 'all' || request.status === filter
+  );
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scrollContainer} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}>
@@ -200,8 +206,23 @@ const EmergencyContactsScreen = () => {
           <Text style={styles.buttonText}>Send Request</Text>
         </TouchableOpacity>
 
-        {sentRequests.length > 0 ? (
-          sentRequests.map(request => (
+        {/* Filter buttons at the bottom */}
+      <View style={styles.filterContainer}>
+        <TouchableOpacity onPress={() => setFilter('all')} style={styles.filterButton}>
+          <Text style={styles.filterButtonText}>All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setFilter('pending')} style={styles.filterButton}>
+          <Text style={styles.filterButtonText}>Pending</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setFilter('accepted')} style={styles.filterButton}>
+          <Text style={styles.filterButtonText}>Accepted</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setFilter('declined')} style={styles.filterButton}>
+          <Text style={styles.filterButtonText}>Rejected</Text>
+        </TouchableOpacity>
+      </View>
+        {filteredRequests.length > 0 ? (
+          filteredRequests.map(request => (
             <View key={request.id} style={styles.requestItem}>
               <Text style={styles.requestText}>
                 <Text style={styles.boldText}>Sent to:</Text> {request.recipientName}
@@ -220,13 +241,14 @@ const EmergencyContactsScreen = () => {
             </View>
           ))
         ) : (
-          <Text style={styles.noRequestsText}>No requests sent yet.</Text>
+          <Text style={styles.noRequestsText}>No requests found.</Text>
         )}
       </ScrollView>
+
+      
     </KeyboardAvoidingView>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#f9f9f9' },
@@ -247,7 +269,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  buttonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' }, // Adjusted font size
   buttonDisabled: { backgroundColor: '#c482d5' },
   contactItem: {
     padding: 15,
@@ -280,8 +302,26 @@ const styles = StyleSheet.create({
   },
   requestText: { fontSize: 16, marginBottom: 5 },
   statusText: {
-    color: '#8134AF', // Or any color you want for the status text
+    color: '#8134AF', 
     fontWeight: 'bold',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 15,
+    backgroundColor: '#fff',
+  },
+  filterButton: {
+    backgroundColor: '#8134AF',
+    padding: 8,
+    borderRadius: 5,
+    width: '22%',
+    alignItems: 'center',
+  },
+  filterButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 13, // Adjusted font size
   },
 });
 
