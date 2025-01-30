@@ -1,3 +1,4 @@
+import 'react-native-url-polyfill/auto'; // Add this for URL polyfill
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -6,6 +7,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import auth from '@react-native-firebase/auth';
 import messaging from '@react-native-firebase/messaging';
 import firestore from '@react-native-firebase/firestore';
+import { AppRegistry } from 'react-native';
+import { name as MyApp } from './app.json';
 
 // Import screens
 import HomeScreen from './android/app/src/screen/HomeScreen';
@@ -25,6 +28,7 @@ import NotificationsScreen from './android/app/src/screen/NotificationScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+AppRegistry.registerComponent(MyApp, () => App);
 
 // Profile Stack Navigator
 const ProfileStackNavigator = () => (

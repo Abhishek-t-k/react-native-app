@@ -6,6 +6,18 @@ import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import { useFocusEffect } from '@react-navigation/native';
 import Geolocation from '@react-native-community/geolocation';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import { createClient } from '@supabase/supabase-js';
+import RNFS from 'react-native-fs';
+import { Buffer } from 'buffer';
+import RNFetchBlob from 'rn-fetch-blob'; // For downloading the file if needed
+
+
+const supabaseUrl = 'https://iidipqlrpoxmpjajayjk.supabase.co'; // Replace with your Supabase URL
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpZGlwcWxycG94bXBqYWpheWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc2NDczMTgsImV4cCI6MjA1MzIyMzMxOH0.cHtVWVXJa6M-LyV51aC-tFkYcgd8sZWmrC3XFPAmqbo'; // Replace with your Supabase Key
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const audioRecorderPlayer = new AudioRecorderPlayer();
 
 type RootStackParamList = {
   Home: undefined;
@@ -25,6 +37,12 @@ const HomeScreen = ({ navigation }: Props) => {
     latitude: 37.78825, // Default latitude
     longitude: -122.4324, // Default longitude
   });
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioPath, setAudioPath] = useState('');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRecorderPlayer = new AudioRecorderPlayer();
+  const [audioFilePath, setAudioFilePath] = useState('');
+  const [audioPlayer] = useState(new AudioRecorderPlayer());
 
   // Fetch user data and receivers list
   const fetchUserData = async () => {
@@ -76,6 +94,111 @@ const HomeScreen = ({ navigation }: Props) => {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
+  };
+ 
+
+global.Buffer = global.Buffer || Buffer;
+
+  // Check if the file exists
+  const checkFileExistence = async (path) => {
+    try {
+      const fileExists = await RNFS.exists(path);
+      if (!fileExists) {
+        console.log('File does not exist!');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Error checking file existence:', error);
+      return false;
+    }
+  };
+
+  // Start recording
+  const startRecording = async () => {
+    try {
+      const path = `${RNFS.DocumentDirectoryPath}/audioRecord.m4a`; // Save to a valid directory with `.m4a` extension
+      setIsRecording(true);
+      const result = await audioPlayer.startRecorder(path);
+      setAudioFilePath(result);
+      console.log('Recording started at:', result);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      Alert.alert('Error', 'Failed to start recording.');
+    }
+  };
+
+  // Stop recording and upload to Supabase
+const stopRecording = async () => {
+  try {
+    const result = await audioPlayer.stopRecorder();
+    setIsRecording(false);
+    setAudioFilePath(result);
+    console.log('Recording stopped at:', result);
+
+    // Upload audio to Supabase
+    await uploadAudioToSupabase(result);
+
+    Alert.alert('Success', 'Recording stopped and uploaded successfully!');
+  } catch (error) {
+    console.error('Error stopping recording:', error);
+    Alert.alert('Error', 'Failed to stop recording.');
+  }
+};
+
+
+  // Play the recorded audio
+  const playAudio = async () => {
+    if (audioFilePath) {
+      const fileExists = await checkFileExistence(audioFilePath);
+      if (fileExists) {
+        try {
+          await audioPlayer.stopPlayer(); // Stop any previous playback
+          await audioPlayer.startPlayer(audioFilePath); // Play the audio
+          console.log('Playing audio from path:', audioFilePath);
+        } catch (error) {
+          console.error('Error playing audio:', error);
+          Alert.alert('Error', 'Failed to play audio.');
+        }
+      } else {
+        Alert.alert('Error', 'Audio file does not exist.');
+      }
+    } else {
+      Alert.alert('Error', 'No audio file found to play.');
+    }
+  };
+
+  // Upload audio to Supabase
+  const uploadAudioToSupabase = async (filePath) => {
+    try {
+      const fileExists = await checkFileExistence(filePath);
+      if (!fileExists) {
+        Alert.alert('Error', 'Audio file does not exist.');
+        return;
+      }
+
+      const audioBinary = await RNFS.readFile(filePath, 'base64'); // Read the file as base64
+      const buffer = Buffer.from(audioBinary, 'base64'); // Convert Base64 to binary
+
+      const fileName = `recordings/${Date.now()}.m4a`; // Unique file name for Supabase storage
+      const { data, error } = await supabase.storage
+        .from('audio-record') // Replace with your Supabase bucket name
+        .upload(fileName, buffer, {
+          contentType: 'audio/m4a',
+          cacheControl: '3600',
+        });
+
+      if (error) {
+        console.error('Error uploading audio:', error);
+        Alert.alert('Error', 'Failed to upload audio.');
+      } else {
+        console.log('Audio uploaded successfully:', data);
+        Alert.alert('Success', 'Audio uploaded successfully!');
+      }
+    } catch (error) {
+      console.error('Error uploading audio to Supabase:', error);
+      Alert.alert('Error', 'Failed to upload audio.');
+    }
   };
 
   // Send emergency alert
@@ -185,6 +308,23 @@ const HomeScreen = ({ navigation }: Props) => {
         </TouchableOpacity>
       ))}
       <TouchableOpacity
+        style={[styles.recordButton, isRecording ? styles.stopButton : null]}
+        onPress={isRecording ? stopRecording : startRecording}
+      >
+        <Text style={styles.recordButtonText}>
+          {isRecording ? 'Stop Recording' : 'Start Recording'}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+  style={[styles.playButton, isPlaying ? styles.stopPlayButton : null]}
+  onPress={playAudio}
+>
+  <Text style={styles.playButtonText}>
+    {isPlaying ? 'Stop Audio' : 'Play Audio'}
+  </Text>
+</TouchableOpacity>
+
+      <TouchableOpacity
         style={[styles.sendButton, !isReceiverAccepted ? styles.disabledButton : null]}
         onPress={sendEmergencyAlert}
         disabled={!isReceiverAccepted}
@@ -211,6 +351,31 @@ const styles = StyleSheet.create({
   badgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
   notificationContainer: { marginVertical: 15, padding: 10, backgroundColor: '#fff', borderRadius: 50, borderColor: '#8134AF', borderWidth: 1, marginBottom: 20, marginTop: 20 },
   notificationText: { fontSize: 16, color: '#333', textAlign: 'center', padding: 5 },
+  recordButton: {
+    padding: 20,
+    backgroundColor: '#8134AF',
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  stopButton: { backgroundColor: '#E63946' },
+  recordButtonText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
+  playButton: {
+    padding: 20,
+    backgroundColor: '#34A853',
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  stopPlayButton: {
+    backgroundColor: '#E63946',
+  },
+  playButtonText: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  
 });
 
 export default HomeScreen;
