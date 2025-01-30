@@ -312,7 +312,7 @@ const stopRecording = async () => {
         onPress={isRecording ? stopRecording : startRecording}
       >
         <Text style={styles.recordButtonText}>
-          {isRecording ? 'Stop Recording' : 'Start Recording'}
+          {isRecording ? 'Stop audio Recording' : 'Start audio Recording'}
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
