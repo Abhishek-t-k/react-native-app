@@ -200,46 +200,77 @@ const stopRecording = async () => {
       Alert.alert('Error', 'Failed to upload audio.');
     }
   };
+// Send emergency alert and upload audio
+const sendEmergencyAlert = async () => {
+  const currentUser = auth().currentUser;
+  if (!currentUser || !selectedReceiver || !isReceiverAccepted) {
+    Alert.alert('Error', 'Please ensure the receiver has accepted the request.');
+    return;
+  }
 
-  // Send emergency alert
-  const sendEmergencyAlert = async () => {
-    const currentUser = auth().currentUser;
-    if (!currentUser || !selectedReceiver || !isReceiverAccepted) {
-      Alert.alert('Error', 'Please ensure the receiver has accepted the request.');
+  try {
+    const senderName = userName;
+    const senderLocation = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    };
+    const receiver = receivers.find((r) => r.id === selectedReceiver);
+
+    if (!receiver) {
+      Alert.alert('Error', 'Receiver not found.');
       return;
     }
 
-    try {
-      const senderName = userName;
-      const senderLocation = {
-        latitude: location.latitude,
-        longitude: location.longitude,
-      };
-      const receiver = receivers.find((r) => r.id === selectedReceiver);
+    // Check if the audio file exists
+    const fileExists = await checkFileExistence(audioFilePath);
+    if (!fileExists) {
+      Alert.alert('Error', 'No recorded audio file found to upload.');
+      return;
+    }
 
-      if (!receiver) {
-        Alert.alert('Error', 'Receiver not found.');
-        return;
-      }
+    // Upload the audio to Supabase
+    const audioBinary = await RNFS.readFile(audioFilePath, 'base64'); // Read file as base64
+    const buffer = Buffer.from(audioBinary, 'base64'); // Convert Base64 to binary
+    const fileName = `recordings/${Date.now()}.m4a`; // Generate a unique file name
 
-      await firestore().collection('alerts').add({
-        senderId: currentUser.uid,
-        senderName,
-        senderLocation,  // Add sender's location to the alert
-        receiverId: receiver.id,
-        receiverName: receiver.name,
-        timestamp: firestore.FieldValue.serverTimestamp(),
-        status: 'pending',
-        message: 'Emergency alert triggered!',
+    const { data, error } = await supabase.storage
+      .from('audio-record') // Replace with your Supabase bucket name
+      .upload(fileName, buffer, {
+        contentType: 'audio/m4a',
+        cacheControl: '3600',
       });
 
-      Alert.alert('Success', `Emergency alert sent to ${receiver.name}!`);
-      setIsReceiverAccepted(false);  // Reset receiver acceptance status
-    } catch (error) {
-      console.error('Error sending alert:', error);
-      Alert.alert('Error', 'Failed to send alert.');
+    if (error) {
+      console.error('Error uploading audio:', error);
+      Alert.alert('Error', 'Failed to upload audio.');
+      return;
     }
-  };
+
+    // The public URL of the uploaded audio
+    const audioUrl = supabase.storage
+      .from('audio-record')
+      .getPublicUrl(fileName).data.publicUrl;
+
+    // Send the alert to Firestore with the audio URL
+    await firestore().collection('alerts').add({
+      senderId: currentUser.uid,
+      senderName,
+      senderLocation, // Add sender's location
+      receiverId: receiver.id,
+      receiverName: receiver.name,
+      timestamp: firestore.FieldValue.serverTimestamp(),
+      status: 'pending',
+      message: 'Emergency alert triggered!',
+      audioUrl, // Attach the audio URL to the alert
+    });
+
+    Alert.alert('Success', `Emergency alert sent to ${receiver.name} with audio!`);
+    setIsReceiverAccepted(false); // Reset receiver acceptance status
+  } catch (error) {
+    console.error('Error sending alert:', error);
+    Alert.alert('Error', 'Failed to send alert.');
+  }
+};
 
   // UseFocusEffect to fetch user data, request status, and subscribe to alerts
   useFocusEffect(

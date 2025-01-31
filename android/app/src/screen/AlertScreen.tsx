@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import firestore from '@react-native-firebase/firestore';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 
 type RootStackParamList = {
   Alert: { alertId: string };
@@ -12,19 +13,40 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Alert'>;
 const NotificationReadPage = ({ route }: Props) => {
   const { alertId } = route.params;
   const [alertDetails, setAlertDetails] = useState<any>(null);
+  const audioRecorderPlayer = new AudioRecorderPlayer();
 
   useEffect(() => {
     const fetchAlertDetails = async () => {
-      const alertDoc = await firestore().collection('alerts').doc(alertId).get();
-      if (alertDoc.exists) {
-        setAlertDetails(alertDoc.data());
-      } else {
-        Alert.alert('Error', 'Alert not found.');
+      try {
+        const alertDoc = await firestore().collection('alerts').doc(alertId).get();
+        if (alertDoc.exists) {
+          setAlertDetails(alertDoc.data());
+        } else {
+          Alert.alert('Error', 'Alert not found.');
+        }
+      } catch (error) {
+        console.error('Error fetching alert details:', error);
+        Alert.alert('Error', 'Failed to fetch alert details.');
       }
     };
 
     fetchAlertDetails();
   }, [alertId]);
+
+  const playAudio = async (audioUrl: string) => {
+    try {
+      await audioRecorderPlayer.startPlayer(audioUrl);
+      audioRecorderPlayer.addPlayBackListener((e) => {
+        if (e.current_position === e.duration) {
+          audioRecorderPlayer.stopPlayer();
+          audioRecorderPlayer.removePlayBackListener();
+        }
+      });
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      Alert.alert('Error', 'Failed to play audio.');
+    }
+  };
 
   if (!alertDetails) {
     return (
@@ -34,15 +56,14 @@ const NotificationReadPage = ({ route }: Props) => {
     );
   }
 
-  const { senderName, location, message, senderLocation } = alertDetails;
+  const { senderName, message, senderLocation, audioUrl } = alertDetails;
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Alert Details</Text>
       <Text style={styles.text}>Sender: {senderName}</Text>
       <Text style={styles.text}>Message: {message}</Text>
-     
-      
+
       {/* Display Sender's Location */}
       {senderLocation ? (
         <Text style={styles.text}>
@@ -52,12 +73,19 @@ const NotificationReadPage = ({ route }: Props) => {
         <Text style={styles.text}>Sender's location not available.</Text>
       )}
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => Alert.alert('Alert acknowledged!')}
-      >
-        <Text style={styles.buttonText}>Acknowledge</Text>
-      </TouchableOpacity>
+      {/* Display Play Audio Button if audioUrl exists */}
+      {audioUrl ? (
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => playAudio(audioUrl)}
+        >
+          <Text style={styles.buttonText}>Play Audio</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.text}>No audio file attached.</Text>
+      )}
+
+     
     </View>
   );
 };
