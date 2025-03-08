@@ -334,7 +334,7 @@ const sendEmergencyAlert = async () => {
           onPress={() => navigation.navigate('Alert', { alertId: notification.id })}
         >
           <Text style={styles.notificationText}>
-            New Alert!!
+            New Alert!
           </Text>
         </TouchableOpacity>
       ))}
