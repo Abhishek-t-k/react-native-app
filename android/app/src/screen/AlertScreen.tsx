@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import firestore from '@react-native-firebase/firestore';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import MapView, { Marker } from 'react-native-maps';
 
 type RootStackParamList = {
   Alert: { alertId: string };
@@ -55,7 +56,22 @@ const NotificationReadPage = ({ route }: Props) => {
       </View>
     );
   }
-
+const requestLocationPermission = async () => {
+  try {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Location Permission',
+        message: 'This app requires access to your location.',
+        buttonPositive: 'OK',
+      }
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (err) {
+    console.warn(err);
+    return false;
+  }
+};
   const { senderName, message, senderLocation, audioUrl } = alertDetails;
 
   return (
@@ -66,9 +82,23 @@ const NotificationReadPage = ({ route }: Props) => {
 
       {/* Display Sender's Location */}
       {senderLocation ? (
-        <Text style={styles.text}>
-          Sender Location: {senderLocation.latitude}, {senderLocation.longitude}
-        </Text>
+        <MapView
+          style={styles.map}
+          initialRegion={{
+            latitude: senderLocation.latitude,
+            longitude: senderLocation.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }}
+        >
+          <Marker
+            coordinate={{
+              latitude: senderLocation.latitude,
+              longitude: senderLocation.longitude,
+            }}
+            title="Sender's Location"
+          />
+        </MapView>
       ) : (
         <Text style={styles.text}>Sender's location not available.</Text>
       )}
@@ -84,7 +114,7 @@ const NotificationReadPage = ({ route }: Props) => {
       ) : (
         <Text style={styles.text}>No audio file attached.</Text>
       )}
-
+      
      
     </View>
   );
@@ -96,6 +126,11 @@ const styles = StyleSheet.create({
   text: { fontSize: 16, marginBottom: 10 },
   button: { backgroundColor: '#8134AF', padding: 15, borderRadius: 10, marginTop: 20 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  map: {
+    width: '100%',
+    height: 300,
+  },
+  
 });
 
 export default NotificationReadPage;

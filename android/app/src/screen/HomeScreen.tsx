@@ -10,7 +10,8 @@ import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import { createClient } from '@supabase/supabase-js';
 import RNFS from 'react-native-fs';
 import { Buffer } from 'buffer';
-import RNFetchBlob from 'rn-fetch-blob'; // For downloading the file if needed
+import { ScrollView } from 'react-native';
+import RNFetchBlob from 'react-native-blob-util'; // For downloading the file if needed
 
 
 const supabaseUrl = 'https://iidipqlrpoxmpjajayjk.supabase.co'; // Replace with your Supabase URL
@@ -28,6 +29,7 @@ type RootStackParamList = {
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const HomeScreen = ({ navigation }: Props) => {
+  const [receiverPhone, setReceiverPhone] = useState<string | null>(null);
   const [userName, setUserName] = useState('User');
   const [receivers, setReceivers] = useState<any[]>([]);
   const [selectedReceiver, setSelectedReceiver] = useState<string | null>(null);
@@ -58,6 +60,7 @@ const HomeScreen = ({ navigation }: Props) => {
       setReceivers(receiverData);
     }
   };
+  
 
   // Fetch request status to check if receiver has accepted
   const fetchRequestStatus = async () => {
@@ -169,37 +172,7 @@ const stopRecording = async () => {
   };
 
   // Upload audio to Supabase
-  const uploadAudioToSupabase = async (filePath) => {
-    try {
-      const fileExists = await checkFileExistence(filePath);
-      if (!fileExists) {
-        Alert.alert('Error', 'Audio file does not exist.');
-        return;
-      }
-
-      const audioBinary = await RNFS.readFile(filePath, 'base64'); // Read the file as base64
-      const buffer = Buffer.from(audioBinary, 'base64'); // Convert Base64 to binary
-
-      const fileName = `recordings/${Date.now()}.m4a`; // Unique file name for Supabase storage
-      const { data, error } = await supabase.storage
-        .from('audio-record') // Replace with your Supabase bucket name
-        .upload(fileName, buffer, {
-          contentType: 'audio/m4a',
-          cacheControl: '3600',
-        });
-
-      if (error) {
-        console.error('Error uploading audio:', error);
-        Alert.alert('Error', 'Failed to upload audio.');
-      } else {
-        console.log('Audio uploaded successfully:', data);
-        Alert.alert('Success', 'Audio uploaded successfully!');
-      }
-    } catch (error) {
-      console.error('Error uploading audio to Supabase:', error);
-      Alert.alert('Error', 'Failed to upload audio.');
-    }
-  };
+  
 // Send emergency alert and upload audio
 const sendEmergencyAlert = async () => {
   const currentUser = auth().currentUser;
@@ -221,56 +194,63 @@ const sendEmergencyAlert = async () => {
       return;
     }
 
-    // Check if the audio file exists
-    const fileExists = await checkFileExistence(audioFilePath);
-    if (!fileExists) {
-      Alert.alert('Error', 'No recorded audio file found to upload.');
-      return;
-    }
+    // Start recording audio
+    const path = `${RNFS.DocumentDirectoryPath}/audioRecord.m4a`;
+    setIsRecording(true);
+    await audioPlayer.startRecorder(path);
+    console.log('Recording started...');
 
-    // Upload the audio to Supabase
-    const audioBinary = await RNFS.readFile(audioFilePath, 'base64'); // Read file as base64
-    const buffer = Buffer.from(audioBinary, 'base64'); // Convert Base64 to binary
-    const fileName = `recordings/${Date.now()}.m4a`; // Generate a unique file name
+    // Wait for 30 seconds before stopping recording
+    setTimeout(async () => {
+      const result = await audioPlayer.stopRecorder();
+      setIsRecording(false);
+      setAudioFilePath(result);
+      console.log('Recording stopped at:', result);
 
-    const { data, error } = await supabase.storage
-      .from('audio-record') // Replace with your Supabase bucket name
-      .upload(fileName, buffer, {
-        contentType: 'audio/m4a',
-        cacheControl: '3600',
+      // Upload the audio to Supabase
+      const audioBinary = await RNFS.readFile(result, 'base64');
+      const buffer = Buffer.from(audioBinary, 'base64');
+      const fileName = `recordings/${Date.now()}.m4a`;
+
+      const { data, error } = await supabase.storage
+        .from('audio-record')
+        .upload(fileName, buffer, {
+          contentType: 'audio/m4a',
+          cacheControl: '3600',
+        });
+
+      if (error) {
+        console.error('Error uploading audio:', error);
+        Alert.alert('Error', 'Failed to upload audio.');
+        return;
+      }
+
+      const audioUrl = supabase.storage
+        .from('audio-record')
+        .getPublicUrl(fileName).data.publicUrl;
+
+      // Send the alert to Firestore with the audio URL
+      await firestore().collection('alerts').add({
+        senderId: currentUser.uid,
+        senderName,
+        senderLocation,
+        receiverId: receiver.id,
+        receiverName: receiver.name,
+        timestamp: firestore.FieldValue.serverTimestamp(),
+        status: 'pending',
+        message: 'Emergency alert triggered!',
+        audioUrl,
       });
 
-    if (error) {
-      console.error('Error uploading audio:', error);
-      Alert.alert('Error', 'Failed to upload audio.');
-      return;
-    }
-
-    // The public URL of the uploaded audio
-    const audioUrl = supabase.storage
-      .from('audio-record')
-      .getPublicUrl(fileName).data.publicUrl;
-
-    // Send the alert to Firestore with the audio URL
-    await firestore().collection('alerts').add({
-      senderId: currentUser.uid,
-      senderName,
-      senderLocation, // Add sender's location
-      receiverId: receiver.id,
-      receiverName: receiver.name,
-      timestamp: firestore.FieldValue.serverTimestamp(),
-      status: 'pending',
-      message: 'Emergency alert triggered!',
-      audioUrl, // Attach the audio URL to the alert
-    });
-
-    Alert.alert('Success', `Emergency alert sent to ${receiver.name} with audio!`);
-    setIsReceiverAccepted(false); // Reset receiver acceptance status
+      Alert.alert('Success', `Emergency alert sent to ${receiver.name} with audio!`);
+      setIsReceiverAccepted(false);
+    }, 30000); // 30 seconds delay
   } catch (error) {
     console.error('Error sending alert:', error);
     Alert.alert('Error', 'Failed to send alert.');
   }
 };
+
 
   // UseFocusEffect to fetch user data, request status, and subscribe to alerts
   useFocusEffect(
@@ -313,58 +293,61 @@ const sendEmergencyAlert = async () => {
   useEffect(() => {
     requestLocationPermission();  // Request location on mount
   }, []);
+  
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.greeting}>Welcome, {userName}!</Text>
-
-      {/* Automatically show the accepted receiver's info */}
-      {isReceiverAccepted ? (
-        <Text style={styles.receiverText}>
-          Receiver Accepted: {receivers.find(r => r.id === selectedReceiver)?.name}
-        </Text>
-      ) : (
-        <Text style={styles.receiverText}>No accepted receiver yet.</Text>
-      )}
-      
-      {notifications.map((notification) => (
+    <ScrollView >
+      <View style={styles.container}>
+        <Text style={styles.greeting}>Welcome, {userName}!</Text>
+  
+        {/* Automatically show the accepted receiver's info */}
+        {isReceiverAccepted ? (
+          <Text style={styles.receiverText}>
+            Receiver Accepted: {receivers.find(r => r.id === selectedReceiver)?.name}
+          </Text>
+        ) : (
+          <Text style={styles.receiverText}>No accepted receiver yet.</Text>
+        )}
+  
+        {notifications.map((notification) => (
+          <TouchableOpacity
+            key={notification.id}
+            style={styles.notificationContainer}
+            onPress={() => navigation.navigate('Alert', { alertId: notification.id })}
+          >
+            <Text style={styles.notificationText}>New Alert!</Text>
+          </TouchableOpacity>
+        ))}
+  
         <TouchableOpacity
-          key={notification.id}
-          style={styles.notificationContainer}
-          onPress={() => navigation.navigate('Alert', { alertId: notification.id })}
+          style={[styles.recordButton, isRecording ? styles.stopButton : null]}
+          onPress={isRecording ? stopRecording : startRecording}
         >
-          <Text style={styles.notificationText}>
-            New Alert!
+          <Text style={styles.recordButtonText}>
+            {isRecording ? 'Stop audio Recording' : 'Start audio Recording'}
           </Text>
         </TouchableOpacity>
-      ))}
-      <TouchableOpacity
-        style={[styles.recordButton, isRecording ? styles.stopButton : null]}
-        onPress={isRecording ? stopRecording : startRecording}
-      >
-        <Text style={styles.recordButtonText}>
-          {isRecording ? 'Stop audio Recording' : 'Start audio Recording'}
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-  style={[styles.playButton, isPlaying ? styles.stopPlayButton : null]}
-  onPress={playAudio}
->
-  <Text style={styles.playButtonText}>
-    {isPlaying ? 'Stop Audio' : 'Play Audio'}
-  </Text>
-</TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.sendButton, !isReceiverAccepted ? styles.disabledButton : null]}
-        onPress={sendEmergencyAlert}
-        disabled={!isReceiverAccepted}
-      >
-        <Text style={styles.sendButtonText}>Send Alert</Text>
-      </TouchableOpacity>
-
-    </View>
+  
+        <TouchableOpacity
+          style={[styles.playButton, isPlaying ? styles.stopPlayButton : null]}
+          onPress={playAudio}
+        >
+          <Text style={styles.playButtonText}>
+            {isPlaying ? 'Stop Audio' : 'Play Audio'}
+          </Text>
+        </TouchableOpacity>
+  
+        <TouchableOpacity
+          style={[styles.sendButton, !isReceiverAccepted ? styles.disabledButton : null]}
+          onPress={sendEmergencyAlert}
+          disabled={!isReceiverAccepted}
+        >
+          <Text style={styles.sendButtonText}>Send Alert</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
+  
 };
 
 const styles = StyleSheet.create({
@@ -406,6 +389,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
+  
   
 });
 

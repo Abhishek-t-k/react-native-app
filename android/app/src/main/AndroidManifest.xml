@@ -29,6 +29,7 @@
       android:allowBackup="false"
       android:theme="@style/AppTheme"
       android:supportsRtl="true">
+      tools:replace="android:appComponentFactory"
        <meta-data
     android:name="com.google.android.geo.API_KEY"
     android:value="AIzaSyBrRgg-3gCGQev2i3cKo2f_NrlKJ8xBolg" />
