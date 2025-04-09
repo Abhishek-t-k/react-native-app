@@ -1,5 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  PermissionsAndroid,
+  Platform,
+  Animated,
+  ScrollView,
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import auth from '@react-native-firebase/auth';
@@ -10,15 +20,16 @@ import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import { createClient } from '@supabase/supabase-js';
 import RNFS from 'react-native-fs';
 import { Buffer } from 'buffer';
-import { ScrollView } from 'react-native';
-import RNFetchBlob from 'react-native-blob-util'; // For downloading the file if needed
+import RNFetchBlob from 'react-native-blob-util';
+import { BleManager, Device } from 'react-native-ble-plx';
 
-
-const supabaseUrl = 'https://iidipqlrpoxmpjajayjk.supabase.co'; // Replace with your Supabase URL
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpZGlwcWxycG94bXBqYWpheWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc2NDczMTgsImV4cCI6MjA1MzIyMzMxOH0.cHtVWVXJa6M-LyV51aC-tFkYcgd8sZWmrC3XFPAmqbo'; // Replace with your Supabase Key
+const supabaseUrl = 'https://iidipqlrpoxmpjajayjk.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlpZGlwcWxycG94bXBqYWpheWprIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc2NDczMTgsImV4cCI6MjA1MzIyMzMxOH0.cHtVWVXJa6M-LyV51aC-tFkYcgd8sZWmrC3XFPAmqbo';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const audioRecorderPlayer = new AudioRecorderPlayer();
+const bleManager = new BleManager();
+const SERVICE_UUID = '12345678-1234-1234-1234-123456789abc';
+const CHARACTERISTIC_UUID = '87654321-4321-4321-4321-cba987654321';
 
 type RootStackParamList = {
   Home: undefined;
@@ -29,23 +40,165 @@ type RootStackParamList = {
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const HomeScreen = ({ navigation }: Props) => {
+  const [showReceiverInfo, setShowReceiverInfo] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [deletedAlert, setDeletedAlert] = useState<any>(null);
+  const deleteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isAlertActive, setIsAlertActive] = useState(false);
+  const alertCancelRef = useRef<NodeJS.Timeout | null>(null);
+  
+
   const [receiverPhone, setReceiverPhone] = useState<string | null>(null);
   const [userName, setUserName] = useState('User');
   const [receivers, setReceivers] = useState<any[]>([]);
   const [selectedReceiver, setSelectedReceiver] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isReceiverAccepted, setIsReceiverAccepted] = useState(false);
-  const [location, setLocation] = useState({
-    latitude: 37.78825, // Default latitude
-    longitude: -122.4324, // Default longitude
-  });
+  const [location, setLocation] = useState({ latitude: 37.78825, longitude: -122.4324 });
   const [isRecording, setIsRecording] = useState(false);
-  const [audioPath, setAudioPath] = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioRecorderPlayer = new AudioRecorderPlayer();
   const [audioFilePath, setAudioFilePath] = useState('');
-  const [audioPlayer] = useState(new AudioRecorderPlayer());
+  const audioPlayer = new AudioRecorderPlayer();
 
+  const [device, setDevice] = useState<Device | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [bleMessage, setBleMessage] = useState('Disconnected');
+  const [pingInterval, setPingInterval] = useState<NodeJS.Timer | null>(null);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const slideAnim = useRef(new Animated.Value(-100)).current;
+
+  const showSnackbar = (msg: string) => {
+    setSnackbarMessage(msg);
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setTimeout(() => {
+        Animated.timing(slideAnim, {
+          toValue: -100,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      }, 2000);
+    });
+  };
+  const toggleReceiverInfo = () => {
+    setShowReceiverInfo(prev => !prev);
+  };
+  
+  const requestPermissions = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      ]);
+      return Object.values(granted).every(res => res === PermissionsAndroid.RESULTS.GRANTED);
+    }
+    return true;
+  };
+
+  const startPingingESP32 = (connectedDevice: Device) => {
+    const interval = setInterval(async () => {
+      try {
+        const pingMessage = Buffer.from('ping', 'ascii').toString('base64');
+        await connectedDevice.writeCharacteristicWithResponseForService(
+          SERVICE_UUID,
+          CHARACTERISTIC_UUID,
+          pingMessage
+        );
+      } catch (err) {
+        console.error('Ping error:', err);
+      }
+    }, 10000);
+    setPingInterval(interval);
+  };
+
+  const connectToESP32 = async () => {
+    const permission = await requestPermissions();
+    if (!permission) return;
+
+    setBleMessage('🔍 Scanning for ESP32...');
+    let scanCompleted = false;
+
+    bleManager.startDeviceScan(null, null, async (error, scannedDevice) => {
+      if (error) {
+        console.error('Scan error:', error);
+        setBleMessage('❌ BLE Scan Error');
+        return;
+      }
+
+      if (scannedDevice?.name === 'ESP32-BLE-Device') {
+        scanCompleted = true;
+        bleManager.stopDeviceScan();
+
+        try {
+          const connectedDevice = await scannedDevice.connect();
+          await connectedDevice.discoverAllServicesAndCharacteristics();
+          
+          setDevice(connectedDevice);
+          setIsConnected(true);
+          setBleMessage('✅ Connected to ESP32');
+
+          connectedDevice.monitorCharacteristicForService(
+            SERVICE_UUID,
+            CHARACTERISTIC_UUID,
+            (notifyError, char) => {
+              if (notifyError) {
+                console.error('Notification error:', notifyError);
+                return;
+              }
+          
+              if (char?.value) {
+                const val = Buffer.from(char.value, 'base64').toString('ascii');
+                setBleMessage(`🔔 ${val}`);
+          
+                if (val === 'button_pressed') {
+                  showSnackbar('🔘 Button pressed on ESP32!');
+          
+                  // Use an async IIFE to safely call async function
+                  (async () => {
+                    await sendEmergencyAlert();
+                  })();
+                }
+              }
+            }
+          );
+          
+
+          startPingingESP32(connectedDevice);
+        } catch (err) {
+          console.error('Connection error:', err);
+          setBleMessage('❌ Connection failed');
+        }
+      }
+    });
+
+    setTimeout(() => {
+      bleManager.stopDeviceScan();
+      if (!isConnected && !scanCompleted) {
+        setBleMessage('⚠️ ESP32 not found. Try again.');
+      }
+    }, 10000);
+  };
+
+  const disconnect = async () => {
+    if (pingInterval) clearInterval(pingInterval);
+    if (device) {
+      await device.cancelConnection();
+      setDevice(null);
+      setIsConnected(false);
+      setBleMessage('🔌 Disconnected');
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      bleManager.stopDeviceScan();
+      if (pingInterval) clearInterval(pingInterval);
+      device?.cancelConnection();
+    };
+  }, [device]);
   // Fetch user data and receivers list
   const fetchUserData = async () => {
     const currentUser = auth().currentUser;
@@ -175,6 +328,16 @@ const stopRecording = async () => {
   
 // Send emergency alert and upload audio
 const sendEmergencyAlert = async () => {
+  if (isAlertActive) {
+    // CANCEL ALERT
+    audioPlayer.stopRecorder(); // Stop recording if active
+    setIsRecording(false);
+    setIsAlertActive(false);
+    if (alertCancelRef.current) clearTimeout(alertCancelRef.current);
+    showSnackbar('❌ Alert canceled');
+    return;
+  }
+
   const currentUser = auth().currentUser;
   if (!currentUser || !selectedReceiver || !isReceiverAccepted) {
     Alert.alert('Error', 'Please ensure the receiver has accepted the request.');
@@ -194,62 +357,71 @@ const sendEmergencyAlert = async () => {
       return;
     }
 
-    // Start recording audio
+    // Start recording
     const path = `${RNFS.DocumentDirectoryPath}/audioRecord.m4a`;
     setIsRecording(true);
     await audioPlayer.startRecorder(path);
-    console.log('Recording started...');
+    setAudioFilePath(path);
+    setIsAlertActive(true);
+    showSnackbar('⏳ Recording started, sending alert in 30s...');
 
-    // Wait for 30 seconds before stopping recording
-    setTimeout(async () => {
-      const result = await audioPlayer.stopRecorder();
-      setIsRecording(false);
-      setAudioFilePath(result);
-      console.log('Recording stopped at:', result);
+    // Delay sending alert for 30s
+    alertCancelRef.current = setTimeout(async () => {
+      try {
+        const result = await audioPlayer.stopRecorder();
+        setIsRecording(false);
+        setAudioFilePath(result);
+        setIsAlertActive(false);
 
-      // Upload the audio to Supabase
-      const audioBinary = await RNFS.readFile(result, 'base64');
-      const buffer = Buffer.from(audioBinary, 'base64');
-      const fileName = `recordings/${Date.now()}.m4a`;
+        const audioBinary = await RNFS.readFile(result, 'base64');
+        const buffer = Buffer.from(audioBinary, 'base64');
+        const fileName = `recordings/${Date.now()}.m4a`;
 
-      const { data, error } = await supabase.storage
-        .from('audio-record')
-        .upload(fileName, buffer, {
-          contentType: 'audio/m4a',
-          cacheControl: '3600',
+        const { error } = await supabase.storage
+          .from('audio-record')
+          .upload(fileName, buffer, {
+            contentType: 'audio/m4a',
+            cacheControl: '3600',
+          });
+
+        if (error) {
+          console.error('Upload error:', error);
+          Alert.alert('Error', 'Failed to upload audio.');
+          return;
+        }
+
+        const audioUrl = supabase.storage
+          .from('audio-record')
+          .getPublicUrl(fileName).data.publicUrl;
+
+        await firestore().collection('alerts').add({
+          senderId: currentUser.uid,
+          senderName,
+          senderLocation,
+          receiverId: receiver.id,
+          receiverName: receiver.name,
+          timestamp: firestore.FieldValue.serverTimestamp(),
+          status: 'pending',
+          message: 'Emergency alert triggered!',
+          audioUrl,
         });
 
-      if (error) {
-        console.error('Error uploading audio:', error);
-        Alert.alert('Error', 'Failed to upload audio.');
-        return;
+        Alert.alert('✅ Success', `Emergency alert sent to ${receiver.name}`);
+        setIsReceiverAccepted(false);
+      } catch (err) {
+        console.error('Finalization error:', err);
+        Alert.alert('Error', 'Failed to send alert.');
+        setIsAlertActive(false);
       }
+    }, 30000); // 30s
 
-      const audioUrl = supabase.storage
-        .from('audio-record')
-        .getPublicUrl(fileName).data.publicUrl;
-
-      // Send the alert to Firestore with the audio URL
-      await firestore().collection('alerts').add({
-        senderId: currentUser.uid,
-        senderName,
-        senderLocation,
-        receiverId: receiver.id,
-        receiverName: receiver.name,
-        timestamp: firestore.FieldValue.serverTimestamp(),
-        status: 'pending',
-        message: 'Emergency alert triggered!',
-        audioUrl,
-      });
-
-      Alert.alert('Success', `Emergency alert sent to ${receiver.name} with audio!`);
-      setIsReceiverAccepted(false);
-    }, 30000); // 30 seconds delay
   } catch (error) {
-    console.error('Error sending alert:', error);
-    Alert.alert('Error', 'Failed to send alert.');
+    console.error('Error starting alert:', error);
+    Alert.alert('Error', 'Failed to initiate alert.');
+    setIsAlertActive(false);
   }
 };
+
 
 
   // UseFocusEffect to fetch user data, request status, and subscribe to alerts
@@ -296,57 +468,107 @@ const sendEmergencyAlert = async () => {
   
 
   return (
-    <ScrollView >
-      <View style={styles.container}>
-        <Text style={styles.greeting}>Welcome, {userName}!</Text>
-  
-        {/* Automatically show the accepted receiver's info */}
-        {isReceiverAccepted ? (
-          <Text style={styles.receiverText}>
-            Receiver Accepted: {receivers.find(r => r.id === selectedReceiver)?.name}
+    <View style={{ flex: 1 }}>
+      {/* TOP BUTTONS */}
+      <View style={styles.topButtonsContainer}>
+      <Text style={styles.greeting}>Welcome, {userName}!</Text>
+
+        <TouchableOpacity
+        
+          style={[styles.bleButton, isConnected ? styles.disconnectButton : styles.connectButton]}
+          onPress={isConnected ? disconnect : connectToESP32}
+        >
+          <Text style={styles.bleButtonText}>
+            {isConnected ? 'Disconnect from ESP32' : 'Connect to ESP32'}
           </Text>
-        ) : (
-          <Text style={styles.receiverText}>No accepted receiver yet.</Text>
-        )}
-  
-        {notifications.map((notification) => (
-          <TouchableOpacity
-            key={notification.id}
-            style={styles.notificationContainer}
-            onPress={() => navigation.navigate('Alert', { alertId: notification.id })}
-          >
-            <Text style={styles.notificationText}>New Alert!</Text>
-          </TouchableOpacity>
-        ))}
-  
+
+        </TouchableOpacity>
+        <Text style={styles.bleStatus}>{bleMessage}</Text>
+
         <TouchableOpacity
           style={[styles.recordButton, isRecording ? styles.stopButton : null]}
           onPress={isRecording ? stopRecording : startRecording}
         >
           <Text style={styles.recordButtonText}>
-            {isRecording ? 'Stop audio Recording' : 'Start audio Recording'}
+            {isRecording ? 'Stop Audio Recording' : 'Start Audio Recording'}
           </Text>
-        </TouchableOpacity>
-  
-        <TouchableOpacity
-          style={[styles.playButton, isPlaying ? styles.stopPlayButton : null]}
-          onPress={playAudio}
-        >
-          <Text style={styles.playButtonText}>
-            {isPlaying ? 'Stop Audio' : 'Play Audio'}
-          </Text>
-        </TouchableOpacity>
-  
-        <TouchableOpacity
-          style={[styles.sendButton, !isReceiverAccepted ? styles.disabledButton : null]}
-          onPress={sendEmergencyAlert}
-          disabled={!isReceiverAccepted}
-        >
-          <Text style={styles.sendButtonText}>Send Alert</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+  
+      {/* SCROLLABLE CONTENT */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+        <View style={styles.container}>
+  
+          {isReceiverAccepted ? (
+            <Text style={styles.receiverText}>
+              Receiver Accepted: {receivers.find(r => r.id === selectedReceiver)?.name}
+            </Text>
+          ) : (
+            <Text style={styles.receiverText}>No accepted receiver yet.</Text>
+          )}
+  
+          {notifications.map((notification) => (
+            <TouchableOpacity
+              key={notification.id}
+              style={styles.notificationContainer}
+              onPress={() => navigation.navigate('Alert', { alertId: notification.id })}
+              activeOpacity={0.9}
+            >
+              <View style={styles.notificationRow}>
+                <Text style={styles.notificationText}>New Alert!</Text>
+                {notification.timestamp && (
+                  <Text style={styles.timestampText}>
+                    {new Date(notification.timestamp.seconds * 1000).toLocaleString(undefined, {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  style={styles.deleteIcon}
+                  onPress={async () => {
+                    try {
+                      setDeletedAlert(notification);
+                      await firestore().collection('alerts').doc(notification.id).delete();
+                      showSnackbar('🗑️ Alert deleted');
+                      if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
+                      deleteTimeoutRef.current = setTimeout(() => setDeletedAlert(null), 5000);
+                    } catch (error) {
+                      console.error('Delete error:', error);
+                      Alert.alert('Error', 'Failed to delete alert.');
+                    }
+                  }}
+                >
+                  <Text style={{ color: '#e74c3c', fontSize: 18, fontWeight: 'bold' }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ))}
+  
+        </View>
+      </ScrollView>
+  
+      {/* FIXED SEND ALERT BUTTON AT BOTTOM */}
+      <TouchableOpacity
+        style={[
+          styles.sendButtonFixed,
+          !isReceiverAccepted ? styles.disabledButton : null,
+        ]}
+        onPress={sendEmergencyAlert}
+        disabled={!isReceiverAccepted}
+      >
+<Text style={styles.sendButtonText}>
+  {isAlertActive ? 'Cancel Alert' : 'Send Alert'}
+</Text>
+      </TouchableOpacity>
+  
+
+    </View>
   );
+  
   
 };
 
@@ -371,7 +593,68 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 20,
+  },notificationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },notificationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
   },
+  
+  notificationText: {
+    fontSize: 16,
+    color: '#333',
+    flexShrink: 1,
+  },
+  
+  timestampText: {
+    fontSize: 12,
+    color: '#999',
+    minWidth: 90,
+    textAlign: 'right',
+  },
+  
+  deleteIcon: {
+    paddingLeft: 8,
+    paddingRight: 4,
+  },
+  topButtonsContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    backgroundColor: '#f9f9f9',
+  },
+  
+  sendButtonFixed: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#8134AF',
+    borderRadius: 100,
+    padding: 20,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  
+  
+  notificationText: {
+    fontSize: 16,
+    color: '#333',
+    padding: 5,
+    flex: 1,
+  },
+  
+  timestampText: {
+    fontSize: 13,
+    color: '#999',
+    textAlign: 'right',
+    marginLeft: 10,
+    minWidth: 60,
+  },
+  
   stopButton: { backgroundColor: '#E63946' },
   recordButtonText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
   playButton: {
@@ -380,7 +663,42 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     marginTop: 20,
+  },bleButton: {
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20,
   },
+  connectButton: {
+    backgroundColor: '#3498db',
+  },
+  disconnectButton: {
+    backgroundColor: '#e74c3c',
+  },
+  bleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  bleStatus: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  snackbar: {
+    position: 'absolute',
+    bottom: 40,
+    backgroundColor: '#333',
+    padding: 12,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  snackbarText: {
+    color: 'white',
+    fontSize: 14,
+  },
+  
   stopPlayButton: {
     backgroundColor: '#E63946',
   },
@@ -389,6 +707,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
+
   
   
 });
